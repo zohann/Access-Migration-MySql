@@ -1,0 +1,61 @@
+Option Compare Database
+
+Public Function GenDataInsertStatements(ByRef conn, ByRef db, ByRef tbl) As Long
+    Dim sSQLFields As String, dStr As String, i As Long
+    Dim rs As Recordset2
+    Set rs = db.OpenRecordset(tbl.name, dbOpenSnapshot)
+
+    For i = 0 To rs.Fields.Count - 1  '
+        If i > 0 Then sSQLFields = sSQLFields & ", "
+        Select Case rs.Fields(i).Type
+            Case dbDate
+                sSQLFields = sSQLFields & "'"" & IIF(ISNULL([" & rs.Fields(i).name & "]), NULL, FORMAT([" & rs.Fields(i).name & "], 'yyyy-mm-dd')) & ""'"
+            Case dbTime
+                Stop
+            Case dbTimeStamp
+                Stop
+            Case dbGUID, dbMemo, dbText
+                If (rs.Fields(i).Attributes And dbHyperlinkField) = dbHyperlinkField Then
+                    sSQLFields = sSQLFields & "'"" & HyperlinkPart(Nz([" & rs.Fields(i).name & "]), 5) & ""'"
+                Else
+                    sSQLFields = sSQLFields & "'"" & NZ([" & rs.Fields(i).name & "],'NULL') & ""'"
+                End If
+            Case dbByte, dbInteger, dbLong, dbNumeric, dbDecimal, dbSingle, dbFloat, dbDouble
+                If rs.Fields(i).Type = dbSingle Then
+                    sSQLFields = sSQLFields & "'"" & STR([" & rs.Fields(i).name & "]) & ""'"
+                Else
+                    sSQLFields = sSQLFields & "'"" & NZ([" & rs.Fields(i).name & "],'NULL') & ""'"
+                End If
+            Case dbCurrency
+                sSQLFields = sSQLFields & "'"" & STR([" & rs.Fields(i).name & "]) & ""'"
+            Case dbBoolean
+                sSQLFields = sSQLFields & """ & Replace([" & rs.Fields(i).name & "], -1, 1) & """
+            Case Else
+                Stop
+        End Select
+    Next
+    
+    rs.Close
+    Set rs = Nothing
+    
+    Set rsExport = db.OpenRecordset("SELECT ""INSERT INTO `" & tbl.name & "` VALUES(" & sSQLFields & ")"" AS InsertCmd FROM [" & tbl.name & "]", dbOpenSnapshot)
+    With rsExport
+        If .RecordCount > 0 Then
+            Do While Not .EOF
+                dStr = rsExport![InsertCmd]
+                dStr = Replace(dStr, "'NULL'", "NULL")
+                dStr = Replace(dStr, ", '')", ", NULL)")
+                dStr = Replace(dStr, "('',", "(NULL,")
+                Do While InStr(1, dStr, ", '',") > 0
+                    dStr = Replace(dStr, ", '',", ", NULL,")
+                Loop
+                conn.Execute dStr
+                .MoveNext
+            Loop
+            GenDataInsertStatements = .RecordCount
+        End If
+    End With
+
+    rsExport.Close
+    Set rsExport = Nothing
+End Function
