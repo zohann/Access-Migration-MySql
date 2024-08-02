@@ -1,0 +1,41 @@
+Option Compare Database
+
+' ***************************************** Соединение с БД (DAO)
+Function getConnDAO(path_db As String) As Object
+    Set getConnDAO = CreateObject("DAO.DBEngine.120").OpenDatabase(path_db)
+End Function
+
+' ***************************************** Соединение с БД (ADODB)
+Function getConnADODB(path_db As String) As Object
+    Set getConn = CreateObject("ADODB.Connection")
+    getConn.Open "Provider=Microsoft.ACE.OLEDB.12.0;Data Source=" & path_db
+    If getConn.state = 0 Then Exit Function
+End Function
+
+' ***************************************** Соединение с сервером
+Function Connection(Optional strConnect As String) As Object
+    On Error GoTo er_
+    Set Connection = CreateObject("ADODB.Connection")
+    Connection.Open getStrConnect()
+    Exit Function
+er_:
+    MsgBox "AttachDSNLessTable encountered an unexpected error: " & vbCrLf & Err.Number & " - " & Err.Description
+End Function
+
+Function getStrConnect() As String
+    Dim Server_Name As String
+    Dim Database_Name As String
+    Dim User_ID As String
+    Dim Password As String
+    Server_Name = "192.168.1.128:0000"
+    Database_Name = "bdt3"
+    User_ID = "usermy"
+    Password = 0
+    getStrConnect = "DRIVER={MySQL ODBC 9.0 Unicode Driver}" _
+        & ";Connect Timeout=10" _
+        & ";SERVER=" & Server_Name _
+        & ";DATABASE=" & Database_Name _
+        & ";UID=" & User_ID _
+        & ";PWD=" & Password _
+        & ";OPTION=16427"
+End Function
