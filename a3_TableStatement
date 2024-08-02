@@ -1,54 +1,77 @@
 Option Compare Database
 
-Function IMPORTO()
-    Dim aConn As Object, db As Object, td As TableDef
-    Dim name_db As String, path_db As String, tables_skip As String
-    Dim countrowsinserted As Long
-    ' *************************** БД для экспорта на сервер
-    name_db = "bdt2.db"
-    path_db = CurrentProject.Path & "\" & name_db
-    If Dir(path_db) <> name_db Then Exit Function
-    ' *************************** Подключение к БД для экспорта на сервер
-    Set db = getConnDAO(path_db) ' Set aConn = getConnADODB(path_dbу
-    ' *************************** Подключение к серверу
-    Set aConn = Connection(): If aConn.state = 0 Then Exit Function
-    ' *************************** Чтение таблицы UTables в текущей БД
-    tables_skip = ""
-    ' ***************************
-    Debug.Print Now
-    For Each td In db.TableDefs
-        If td.Attributes = 0 And InStr(1, tables_skip, td.name) = 0 Then
-            Call DELTABLE(aConn, td) ' удаление таблицы с сервера
-            Call CREATETABLE(aConn, td) ' добавление таблицы на сервер
-            Call DELSTR(db, td) ' удаление некорректных символов из указанной таблицы
-            countrowsinserted = GenDataInsertStatements(aConn, db, td) ' запись данных в таблицу на сервер
-            Debug.Print Now; "|"; td.name; "|"; countrowsinserted
+' ***************************************** SQL создания полей
+Function CreateFieldStatement(td, fld) As String
+    result = "  `" & fld.name & "`"
+
+    Select Case fld.Type
+        Case dbDate, dbTime, dbTimeStamp
+            result = result & " DATETIME"
+        Case dbMemo    'Memo/Long Text, Hyperlinks
+            result = result & " LONGTEXT"
+        Case dbByte
+            result = result & " TINYINT(3) UNSIGNED"
+        Case dbInteger
+            result = result & " INTEGER"
+        Case dbLong
+            result = result & " INTEGER"
+        Case dbNumeric, dbDecimal
+            result = result & " DECIMAL(" & ADOXCol.Precision & ", " & ADOXCol.NumericScale & ")"
+        Case dbSingle, dbFloat
+            result = result & " FLOAT"
+        Case dbDouble
+            result = result & " DOUBLE"
+        Case dbGUID
+            result = result & " GUID"
+        Case dbBoolean
+            result = result & " TINYINT"
+        Case dbCurrency
+            result = result & " DECIMAL(19,4)"
+        Case dbText
+            result = result & " VARCHAR(" & fld.Size & ")"
+        Case Else
+            result = result & " ????"
+            Stop
+    End Select
+
+    If fld.DefaultValue <> "" Then
+        If fld.Type = dbBoolean Then
+            result = result & " DEFAULT " & IIf(fld.DefaultValue = "NO", 0, 1)
+        Else
+            result = result & " DEFAULT " & fld.DefaultValue
         End If
-    Next
-    ' ***************************
-    Debug.Print Now
-    Set aConn = Nothing
-    Set db = Nothing
+    End If
+
+    If (fld.Attributes And dbAutoIncrField) Then
+        result = result & " AUTO_INCREMENT"
+    End If
+
+    If fld.Required Then result = result & " NOT NULL"
+    CreateFieldStatement = result & "," & vbCrLf
 End Function
 
-' ***************************************** Удаление таблицы
-Function DELTABLE(ByRef conn, ByRef td)
-    Dim result As String
-    result = "DROP TABLE IF EXISTS `" & td.name & "`;"
-    conn.Execute result
-End Function
-
-' ***************************************** Создание таблицы
-Function CREATETABLE(ByRef aConn, td)
-    Dim result As String
-    result = CreateTableStatement(td)
-    aConn.Execute result
+' ***************************************** SQL создания таблицы
+Function CreateTableStatement(ByRef td)
+    result = result & "CREATE TABLE `" & td.name & "`(" & vbCrLf
+    For Each fld In td.Fields
+        result = result & CreateFieldStatement(td, fld)
+    Next fld
+    result = result & GenPKStatement(td) ' GET PK Field to define the INDEX
+    Do While Right(result, 1) = Chr(10) Or Right(result, 1) = Chr(13) Or Right(result, 1) = ","
+        result = Mid(result, 1, Len(result) - 1)
+    Loop
+    CreateTableStatement = result & ")" & ";"
 End Function
 
 ' *****************************************
-Function DELSTR(ByRef db, ByRef td)
-    Select Case td.name
-        Case "pl_Table"
-            db.Execute "UPDATE " & td.name & " SET plName = REPLACE(plName, ""'"","""") WHERE plName LIKE " & """" & "*'*" & """"
-    End Select
+Public Function GenPKStatement(tdf) As String
+    Dim sPkFlds               As String
+    Dim aPkFlds()             As String
+    If tdf.Indexes.Count > 0 Then
+        sPkFlds = Replace(tdf.Indexes("PrimaryKey").Fields, "+", "")
+        aPkFlds = Split(sPkFlds, ";")
+        If UBound(aPkFlds) = 0 Then
+            GenPKStatement = "  PRIMARY KEY (`" & sPkFlds & "`)" & vbCrLf
+        End If
+    End If
 End Function
