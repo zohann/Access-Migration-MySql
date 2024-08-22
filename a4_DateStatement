@@ -3,33 +3,43 @@ Option Compare Database
 Public Function GenDataInsertStatements(ByRef conn, ByRef db, ByRef tbl) As Long
     Dim sSQLFields As String, dStr As String, i As Long
     Dim rs As Recordset2
-    Set rs = db.OpenRecordset(tbl.name, dbOpenSnapshot)
+    Set rs = db.OpenRecordset(tbl.Name, dbOpenSnapshot)
 
     For i = 0 To rs.Fields.Count - 1  '
         If i > 0 Then sSQLFields = sSQLFields & ", "
         Select Case rs.Fields(i).Type
             Case dbDate
-                sSQLFields = sSQLFields & "'"" & IIF(ISNULL([" & rs.Fields(i).name & "]), NULL, FORMAT([" & rs.Fields(i).name & "], 'yyyy-mm-dd')) & ""'"
+                Select Case getProperties(rs.Fields(i), "format")
+                    Case "general date"
+                        strFormat = "yyyy-mm-dd" & IIf(Len(Nz(rs.Fields(i))) > 10, " hh:mm:ss", "")
+                    Case "short date"
+                        strFormat = "yyyy-mm-dd"
+                    Case "short time"
+                        strFormat = "hh:mm:ss"
+                    Case Else
+                        strFormat = "yyyy-mm-dd"
+                End Select
+                sSQLFields = sSQLFields & "'"" & IIF(ISNULL([" & rs.Fields(i).Name & "]), NULL, FORMAT([" & rs.Fields(i).Name & "], '" & strFormat & "')) & ""'"
             Case dbTime
                 Stop
             Case dbTimeStamp
                 Stop
             Case dbGUID, dbMemo, dbText
                 If (rs.Fields(i).Attributes And dbHyperlinkField) = dbHyperlinkField Then
-                    sSQLFields = sSQLFields & "'"" & HyperlinkPart(Nz([" & rs.Fields(i).name & "]), 5) & ""'"
+                    sSQLFields = sSQLFields & "'"" & HyperlinkPart(Nz([" & rs.Fields(i).Name & "]), 5) & ""'"
                 Else
-                    sSQLFields = sSQLFields & "'"" & NZ([" & rs.Fields(i).name & "],'NULL') & ""'"
+                    sSQLFields = sSQLFields & "'"" & NZ([" & rs.Fields(i).Name & "],'NULL') & ""'"
                 End If
             Case dbByte, dbInteger, dbLong, dbNumeric, dbDecimal, dbSingle, dbFloat, dbDouble
                 If rs.Fields(i).Type = dbSingle Then
-                    sSQLFields = sSQLFields & "'"" & STR([" & rs.Fields(i).name & "]) & ""'"
+                    sSQLFields = sSQLFields & "'"" & STR([" & rs.Fields(i).Name & "]) & ""'"
                 Else
-                    sSQLFields = sSQLFields & "'"" & NZ([" & rs.Fields(i).name & "],'NULL') & ""'"
+                    sSQLFields = sSQLFields & "'"" & NZ([" & rs.Fields(i).Name & "],'NULL') & ""'"
                 End If
             Case dbCurrency
-                sSQLFields = sSQLFields & "'"" & STR([" & rs.Fields(i).name & "]) & ""'"
+                sSQLFields = sSQLFields & "'"" & STR([" & rs.Fields(i).Name & "]) & ""'"
             Case dbBoolean
-                sSQLFields = sSQLFields & """ & Replace([" & rs.Fields(i).name & "], -1, 1) & """
+                sSQLFields = sSQLFields & """ & Replace([" & rs.Fields(i).Name & "], -1, 1) & """
             Case Else
                 Stop
         End Select
@@ -38,7 +48,7 @@ Public Function GenDataInsertStatements(ByRef conn, ByRef db, ByRef tbl) As Long
     rs.Close
     Set rs = Nothing
     
-    Set rsExport = db.OpenRecordset("SELECT ""INSERT INTO `" & tbl.name & "` VALUES(" & sSQLFields & ")"" AS InsertCmd FROM [" & tbl.name & "]", dbOpenSnapshot)
+    Set rsExport = db.OpenRecordset("SELECT ""INSERT INTO `" & tbl.Name & "` VALUES(" & sSQLFields & ")"" AS InsertCmd FROM [" & tbl.Name & "]", dbOpenSnapshot)
     With rsExport
         If .RecordCount > 0 Then
             Do While Not .EOF
