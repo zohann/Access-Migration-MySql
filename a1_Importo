@@ -1,28 +1,59 @@
 Option Compare Database
 
+' *********************************** Migration from access (MySQL Workbench) 07/2024
+' Удалить пароль из импортируемой БД
+' Удалить все примечания из таблиц (ошибка UnicodeDecodeError)
+' Удалить все значения по умолчанию
+' Проверить во всех ли таблицах присутствует первичный ключ
+' Выполнить команды в Immediate (ALT+F11)
+    ' Является ли пользователь администратором (Admin): ?CurrentUser
+    ' Установить админский доступ к таблице MSysRelationships: CurrentProject.Connection.Execute "GRANT SELECT ON MSysRelationships TO Admin"
+' *********************************** Установить вариант подключения (б)
+' а) Connection String: Driver={Microsoft Access Driver (*.mdb, *.accdb)};Dbq=D:\Задания\2023-10-18 БД Тендер\bdt_tomigrate.db
+        ' ошибка: Determine number of rows to copy: 'utf-8' codec can't decode byte 0xc7 in position 3730: invalid continuation byte
+' б) Создать пользовательский DSN в окне "Администратор источника данных" (C:\Windows\System32\odbcad32.exe) и указать в нем путь к файлу БД
+' *********************************** Импорт
+' "DSN": Выбрать ранее созданный вариант подключения
+' "Default Character Set": cp1251 - Options: Driver sends…  // cp1252 (крякозабры), utf8mb4 зависает, Driver sends… UTF-8 (крякозабры)
+' Вкладка "Manual", "Column Mappings", столбец "Target Type", преобразовать типы:
+    ' DATETIME(19) в DATE (все поля)
+    ' поля, где имя начинается на "date_time" в DATETIME(0)
+    ' поля где имя начинается на "time" в TIME (надо избавиться от такого поля в дальнейшем)
+' Удалить таблицу Usys
+
+Public Const name_db As String = "bdt6.db"
+Public name_shema As String
+Public Const Server_name As String = "192.168.1.128"
+Public Const Server_port As String = "3306"
+Public Const User_ID As String = "usermy"
+Public Const Password As String = "2025"
+
 Function IMPORTO()
     Dim aConn As Object, db As Object, td As TableDef
-    Dim name_db As String, path_db As String, tables_skip As String
+    Dim path_db As String, tables_skip As String
     Dim countrowsinserted As Long
-    ' *************************** БД для экспорта на сервер
-    name_db = "bdt2.db"
-    path_db = CurrentProject.Path & "\" & name_db
-    If Dir(path_db) <> name_db Then Exit Function
+    ' *************************** БД (в текущей папке) для экспорта на сервер
+    path_db = CurrentProject.Path & "\" & name_db: If Dir(path_db) <> name_db Then Exit Function
     ' *************************** Подключение к БД для экспорта на сервер
-    Set db = getConnDAO(path_db) ' Set aConn = getConnADODB(path_dbу
+    Set db = getConnDAO(path_db)
+    ' *************************** Подключение к серверу
+    name_shema = Split(name_db, ".")(0)
+    Set aConn = Connection(True): If aConn.state = 0 Then Exit Function
+    ' *************************** Создание схемы на сервере
+    aConn.Execute "DROP DATABASE IF EXISTS " & name_shema
+    aConn.Execute "CREATE SCHEMA " & name_shema
     ' *************************** Подключение к серверу
     Set aConn = Connection(): If aConn.state = 0 Then Exit Function
-    ' *************************** Чтение таблицы UTables в текущей БД
-    tables_skip = ""
-    ' ***************************
+    ' *************************** Импорт таблиц и данных из текущей БД на сервер
     Debug.Print Now
     For Each td In db.TableDefs
-        If td.Attributes = 0 And InStr(1, tables_skip, td.name) = 0 Then
-            Call DELTABLE(aConn, td) ' удаление таблицы с сервера
-            Call CREATETABLE(aConn, td) ' добавление таблицы на сервер
+        If td.Attributes = 0 And InStr(1, tables_skip, td.Name) = 0 Then
+            Debug.Print Now; "|"; td.Name;
+            Call DELTABLE(aConn, td) ' удаление таблицы с сервера (необязательно, если ранее используется DROP DATABASE)
+            Call CREATETABLE(aConn, td) ' создание таблицы на сервере
             Call DELSTR(db, td) ' удаление некорректных символов из указанной таблицы
             countrowsinserted = GenDataInsertStatements(aConn, db, td) ' запись данных в таблицу на сервер
-            Debug.Print Now; "|"; td.name; "|"; countrowsinserted
+            Debug.Print Now; "|"; td.Name; "|"; td.RecordCount; "|"; countrowsinserted; "|"; "Done";
         End If
     Next
     ' ***************************
@@ -34,21 +65,22 @@ End Function
 ' ***************************************** Удаление таблицы
 Function DELTABLE(ByRef conn, ByRef td)
     Dim result As String
-    result = "DROP TABLE IF EXISTS `" & td.name & "`;"
+    result = "DROP TABLE IF EXISTS `" & td.Name & "`;"
     conn.Execute result
 End Function
 
 ' ***************************************** Создание таблицы
-Function CREATETABLE(ByRef aConn, td)
+Function CREATETABLE(ByRef aConn, ByRef td As TableDef)
     Dim result As String
     result = CreateTableStatement(td)
     aConn.Execute result
+    Debug.Print "Execute " & result
 End Function
 
 ' *****************************************
 Function DELSTR(ByRef db, ByRef td)
-    Select Case td.name
+    Select Case td.Name
         Case "pl_Table"
-            db.Execute "UPDATE " & td.name & " SET plName = REPLACE(plName, ""'"","""") WHERE plName LIKE " & """" & "*'*" & """"
+            db.Execute "UPDATE " & td.Name & " SET plName = REPLACE(plName, ""'"","""") WHERE plName LIKE " & """" & "*'*" & """"
     End Select
 End Function
