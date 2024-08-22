@@ -1,12 +1,34 @@
 Option Compare Database
 
-' ***************************************** SQL создания полей
-Function CreateFieldStatement(td, fld) As String
-    result = "  `" & fld.name & "`"
+' ***************************************** Свойства поля
+Function getProperties(ByRef fld As field2, propname As String) As String
+    On Error Resume Next
+    getProperties = fld.Properties(propname)
+    If Err.Number <> 0 Then
+        Debug.Print fld.Name; " "; Err.Description
+    End If
+End Function
 
+' ***************************************** SQL создания полей
+Function CreateFieldStatement(ByRef td As TableDef, ByRef fld As field2) As String
+    result = "  `" & fld.Name & "`"
     Select Case fld.Type
-        Case dbDate, dbTime, dbTimeStamp
-            result = result & " DATETIME"
+        Case dbDate
+            prop = getProperties(fld, "format")
+            Select Case prop
+                Case "general date"
+                    result = result & " DATETIME(0)"
+                Case "short date"
+                    result = result & " DATE"
+                Case "short time"
+                    result = result & " TIME"
+                Case Else
+                    result = result & " DATETIME(0)"
+            End Select
+        Case dbTime
+            Stop
+        Case dbTimeStamp
+            Stop
         Case dbMemo    'Memo/Long Text, Hyperlinks
             result = result & " LONGTEXT"
         Case dbByte
@@ -42,19 +64,18 @@ Function CreateFieldStatement(td, fld) As String
         End If
     End If
 
-    If (fld.Attributes And dbAutoIncrField) Then
-        result = result & " AUTO_INCREMENT"
-    End If
-
+    If (fld.Attributes And dbAutoIncrField) Then result = result & " AUTO_INCREMENT"
     If fld.Required Then result = result & " NOT NULL"
     CreateFieldStatement = result & "," & vbCrLf
 End Function
 
 ' ***************************************** SQL создания таблицы
-Function CreateTableStatement(ByRef td)
-    result = result & "CREATE TABLE `" & td.name & "`(" & vbCrLf
+Function CreateTableStatement(ByRef td As TableDef)
+    Dim fld As field2
+    result = result & "CREATE TABLE `" & td.Name & "`(" & vbCrLf
     For Each fld In td.Fields
         result = result & CreateFieldStatement(td, fld)
+        DoEvents: Debug.Print td.Name & " " & fld.Name
     Next fld
     result = result & GenPKStatement(td) ' GET PK Field to define the INDEX
     Do While Right(result, 1) = Chr(10) Or Right(result, 1) = Chr(13) Or Right(result, 1) = ","
